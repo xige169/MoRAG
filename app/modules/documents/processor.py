@@ -1,0 +1,137 @@
+import uuid
+import asyncio
+import traceback
+from concurrent.futures import ProcessPoolExecutor
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, update
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+import dashscope
+from dashscope import TextEmbedding
+
+from app.models.document import Document, DocumentChunk
+from app.core.milvus_client import get_collection
+from app.core.config import get_settings
+
+settings = get_settings()
+dashscope.api_key = settings.dashscope_api_key
+
+_executor = ProcessPoolExecutor(max_workers=2)
+_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
+
+
+def _parse_sync(file_path: str, file_type: str) -> list[dict]:
+    from app.modules.documents.parsers import parse_file
+    return parse_file(file_path, file_type)
+
+
+async def _embed_batch(texts: list[str]) -> list[list[float]]:
+    resp = TextEmbedding.call(
+        model=settings.embed_model,
+        input=texts,
+    )
+    if resp.status_code != 200:
+        raise RuntimeError(f"Embedding API error: {resp.message}")
+    return [item["embedding"] for item in resp.output["embeddings"]]
+
+
+async def process_document(doc_id: uuid.UUID, db: AsyncSession) -> None:
+    await db.execute(
+        update(Document).where(Document.id == doc_id).values(status="processing")
+    )
+    await db.commit()
+
+    try:
+        result = await db.execute(select(Document).where(Document.id == doc_id))
+        doc = result.scalar_one()
+
+        loop = asyncio.get_event_loop()
+        raw_blocks = await loop.run_in_executor(
+            _executor, _parse_sync, doc.stored_path, doc.file_type
+        )
+
+        if not raw_blocks:
+            raise ValueError("No text extracted from document")
+
+        # Chunk each block, preserving page_number
+        all_chunks = []
+        for block in raw_blocks:
+            texts = _splitter.split_text(block["content"])
+            for t in texts:
+                all_chunks.append({
+                    "content": t,
+                    "page_number": block.get("page_number"),
+                })
+
+        if not all_chunks:
+            raise ValueError("No chunks after splitting")
+
+        # Batch embed (25 per request)
+        batch_size = 25
+        all_embeddings = []
+        for i in range(0, len(all_chunks), batch_size):
+            batch = [c["content"] for c in all_chunks[i : i + batch_size]]
+            embeddings = await _embed_batch(batch)
+            all_embeddings.extend(embeddings)
+
+        # Build Milvus & PG data
+        collection = get_collection(str(doc.knowledge_base_id))
+        milvus_rows = {
+            "id": [],
+            "chunk_pg_id": [],
+            "document_id": [],
+            "content": [],
+            "is_enabled": [],
+            "embedding": [],
+        }
+        pg_chunks = []
+
+        for i, (chunk, embedding) in enumerate(zip(all_chunks, all_embeddings)):
+            chunk_pg_id = uuid.uuid4()
+            milvus_id = chunk_pg_id.hex  # 32-char hex string as Milvus ID
+
+            milvus_rows["id"].append(milvus_id)
+            milvus_rows["chunk_pg_id"].append(str(chunk_pg_id))
+            milvus_rows["document_id"].append(str(doc.id))
+            milvus_rows["content"].append(chunk["content"][:4000])
+            milvus_rows["is_enabled"].append(True)
+            milvus_rows["embedding"].append(embedding)
+
+            pg_chunks.append(
+                DocumentChunk(
+                    id=chunk_pg_id,
+                    document_id=doc.id,
+                    knowledge_base_id=doc.knowledge_base_id,
+                    chunk_index=i,
+                    content=chunk["content"],
+                    page_number=chunk.get("page_number"),
+                    char_count=len(chunk["content"]),
+                    milvus_id=milvus_id,
+                )
+            )
+
+        collection.insert([
+            milvus_rows["id"],
+            milvus_rows["chunk_pg_id"],
+            milvus_rows["document_id"],
+            milvus_rows["content"],
+            milvus_rows["is_enabled"],
+            milvus_rows["embedding"],
+        ])
+        collection.flush()
+
+        db.add_all(pg_chunks)
+        await db.execute(
+            update(Document)
+            .where(Document.id == doc_id)
+            .values(status="ready", chunk_count=len(pg_chunks))
+        )
+        await db.commit()
+
+    except Exception:
+        error_msg = traceback.format_exc()[:2000]
+        await db.execute(
+            update(Document)
+            .where(Document.id == doc_id)
+            .values(status="failed", error_message=error_msg)
+        )
+        await db.commit()

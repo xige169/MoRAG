@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment variables — 敏感配置不提交
+.env
+
+# Uploads / binary data
+uploads/
+data/
+
+# Alembic generated versions — 按需提交
+# alembic/versions/
+
+# Logs
+*.log
+
+# Node.js / Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker local volumes
+pg_data/
+milvus_data/
+etcd_data/
+minio_data/
