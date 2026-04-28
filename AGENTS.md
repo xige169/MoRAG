@@ -285,8 +285,13 @@ docker-compose down
 服务地址：
 - 前端（Nginx）: `http://localhost:80`
 - API 文档: `http://localhost:8000/docs`
-- Milvus: `localhost:19530`
-- PostgreSQL: `localhost:5432`
+- Milvus: `localhost:19530`（gRPC/SDK 端口，不是 HTTP 页面，浏览器不能用 `http://localhost:19530/` 访问）
+- PostgreSQL: `localhost:5432`（数据库协议端口，不是 HTTP 页面，浏览器不能用 `http://localhost:5432/` 访问）
+
+服务连接方式：
+- PostgreSQL 本地验证：`docker exec -it rag-postgres-1 psql -U raguser -d ragdb`
+- Milvus 本地验证：`conda run -n agent python -c "from pymilvus import connections, utility; connections.connect('default', host='localhost', port='19530'); print(utility.list_collections())"`
+- 如需网页管理界面，PostgreSQL 可额外部署 pgAdmin，Milvus 可额外部署 Attu；当前 compose 默认只暴露服务协议端口。
 
 ### 运行测试
 
@@ -311,7 +316,7 @@ pytest tests/ -v
          XLSX → openpyxl
          MD/TXT/CSV → 原生读取
       3. RecursiveCharacterTextSplitter（chunk_size=500, overlap=50）
-      4. 批量 Embedding（每批 25 条 → DashScope text-embedding-v4）
+      4. 批量 Embedding（每批最多 10 条 → DashScope text-embedding-v4，显式 dimension=1536）
       5. 写入 Milvus（HNSW COSINE 索引，dim=1536）
       6. 写入 PostgreSQL document_chunks 表
       7. status = ready, chunk_count = N
@@ -323,7 +328,7 @@ pytest tests/ -v
 ```
 用户提问
   → 历史消息拼接（最近 6 条，用于代词指代解析）
-  → Query Embedding（DashScope text-embedding-v4）
+  → Query Embedding（DashScope text-embedding-v4，显式 dimension=1536）
   → Milvus COSINE 向量检索（过滤 is_enabled=true）
      - Precise 模式：top_k=5，threshold=0.72
      - Broad   模式：top_k=10，threshold=0.50

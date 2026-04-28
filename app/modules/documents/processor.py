@@ -17,6 +17,7 @@ dashscope.api_key = settings.dashscope_api_key
 
 _executor = ProcessPoolExecutor(max_workers=2)
 _splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
+EMBEDDING_BATCH_SIZE = 10
 
 
 def _parse_sync(file_path: str, file_type: str) -> list[dict]:
@@ -28,10 +29,18 @@ async def _embed_batch(texts: list[str]) -> list[list[float]]:
     resp = TextEmbedding.call(
         model=settings.embed_model,
         input=texts,
+        dimension=settings.embed_dim,
     )
     if resp.status_code != 200:
         raise RuntimeError(f"Embedding API error: {resp.message}")
     return [item["embedding"] for item in resp.output["embeddings"]]
+
+
+def _chunk_embedding_batches(chunks: list[dict]) -> list[list[dict]]:
+    return [
+        chunks[i : i + EMBEDDING_BATCH_SIZE]
+        for i in range(0, len(chunks), EMBEDDING_BATCH_SIZE)
+    ]
 
 
 async def process_document(doc_id: uuid.UUID, db: AsyncSession) -> None:
@@ -65,11 +74,10 @@ async def process_document(doc_id: uuid.UUID, db: AsyncSession) -> None:
         if not all_chunks:
             raise ValueError("No chunks after splitting")
 
-        # Batch embed (25 per request)
-        batch_size = 25
+        # DashScope text-embedding-v4 currently accepts at most 10 inputs per call.
         all_embeddings = []
-        for i in range(0, len(all_chunks), batch_size):
-            batch = [c["content"] for c in all_chunks[i : i + batch_size]]
+        for chunk_batch in _chunk_embedding_batches(all_chunks):
+            batch = [c["content"] for c in chunk_batch]
             embeddings = await _embed_batch(batch)
             all_embeddings.extend(embeddings)
 

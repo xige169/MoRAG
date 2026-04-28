@@ -13,7 +13,11 @@ dashscope.api_key = settings.dashscope_api_key
 
 
 async def embed_query(text: str) -> list[float]:
-    resp = TextEmbedding.call(model=settings.embed_model, input=[text])
+    resp = TextEmbedding.call(
+        model=settings.embed_model,
+        input=[text],
+        dimension=settings.embed_dim,
+    )
     if resp.status_code != 200:
         raise RuntimeError(f"Embedding error: {resp.message}")
     return resp.output["embeddings"][0]["embedding"]
