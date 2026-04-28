@@ -37,10 +37,20 @@ async def create_kb(
 ) -> KnowledgeBase:
     kb = KnowledgeBase(**data, owner_id=owner_id)
     db.add(kb)
-    await db.commit()
-    await db.refresh(kb)
-    create_kb_collection(str(kb.id))
-    return kb
+    try:
+        await db.flush()
+        create_kb_collection(str(kb.id))
+        await db.commit()
+        await db.refresh(kb)
+        return kb
+    except Exception:
+        await db.rollback()
+        if kb.id:
+            try:
+                drop_kb_collection(str(kb.id))
+            except Exception:
+                pass
+        raise
 
 
 async def get_kb_or_404(
@@ -71,6 +81,6 @@ async def update_kb(
 
 
 async def delete_kb(kb: KnowledgeBase, db: AsyncSession) -> None:
+    drop_kb_collection(str(kb.id))
     kb.is_active = False
     await db.commit()
-    drop_kb_collection(str(kb.id))

@@ -29,7 +29,7 @@ async def upload_documents(
 ):
     docs = await service.upload_documents(kb_id, files, current_user, db)
     for doc in docs:
-        background_tasks.add_task(process_document, doc.id, db)
+        background_tasks.add_task(process_document, doc.id)
     return docs
 
 
@@ -129,5 +129,5 @@ async def reprocess_document(
     doc = result.scalar_one_or_none()
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
-    background_tasks.add_task(process_document, doc.id, db)
+    background_tasks.add_task(process_document, doc.id)
     return {"message": "Reprocessing started"}

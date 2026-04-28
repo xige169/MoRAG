@@ -9,7 +9,7 @@ async def test_health(client):
 
 
 @pytest.mark.anyio
-async def test_login_success(client):
+async def test_login_success(client, require_db):
     r = await client.post(
         "/api/v1/auth/login",
         json={"username": "admin", "password": "admin123"},
@@ -21,7 +21,7 @@ async def test_login_success(client):
 
 
 @pytest.mark.anyio
-async def test_login_wrong_password(client):
+async def test_login_wrong_password(client, require_db):
     r = await client.post(
         "/api/v1/auth/login",
         json={"username": "admin", "password": "wrong"},
@@ -36,7 +36,7 @@ async def test_me_requires_auth(client):
 
 
 @pytest.mark.anyio
-async def test_me_with_token(client):
+async def test_me_with_token(client, require_db):
     login = await client.post(
         "/api/v1/auth/login",
         json={"username": "admin", "password": "admin123"},
@@ -50,7 +50,7 @@ async def test_me_with_token(client):
 
 
 @pytest.mark.anyio
-async def test_admin_stats_requires_admin(client):
+async def test_admin_stats_requires_admin(client, require_db):
     # Create regular user
     admin_login = await client.post(
         "/api/v1/auth/login",
@@ -75,7 +75,7 @@ async def test_admin_stats_requires_admin(client):
 
 
 @pytest.mark.anyio
-async def test_admin_stats_success(client):
+async def test_admin_stats_success(client, require_db):
     login = await client.post(
         "/api/v1/auth/login",
         json={"username": "admin", "password": "admin123"},

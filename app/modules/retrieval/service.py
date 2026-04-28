@@ -86,25 +86,28 @@ async def retrieve(
 
     # Fetch document names
     doc_ids_set = {r["document_id"] for r in raw_results if r.get("document_id")}
-    doc_map: dict[str, str] = {}
+    doc_map: dict[str, Document] = {}
     if doc_ids_set:
         try:
             d_ids = [uuid.UUID(d) for d in doc_ids_set]
             result = await db.execute(
                 select(Document).where(Document.id.in_(d_ids))
             )
-            doc_map = {str(d.id): d.original_name for d in result.scalars().all()}
+            doc_map = {str(d.id): d for d in result.scalars().all()}
         except Exception:
             pass
 
     enriched = []
-    for i, r in enumerate(raw_results):
+    for r in raw_results:
+        doc = doc_map.get(r.get("document_id", ""))
+        if not doc or not doc.is_enabled:
+            continue
         chunk = chunk_map.get(r.get("chunk_pg_id", ""))
         enriched.append({
-            "index": i + 1,
+            "index": len(enriched) + 1,
             "chunk_id": r.get("chunk_pg_id"),
             "doc_id": r.get("document_id"),
-            "doc_name": doc_map.get(r.get("document_id", ""), "Unknown"),
+            "doc_name": doc.original_name,
             "page_number": chunk.page_number if chunk else None,
             "snippet": (r["content"])[:300],
             "content": r["content"],

@@ -1,23 +1,25 @@
 import uuid
 from datetime import datetime
-from pydantic import BaseModel
+from typing import Literal
+from pydantic import BaseModel, Field
 
 
 class SessionCreate(BaseModel):
-    knowledge_base_ids: list[uuid.UUID]
-    title: str | None = None
+    knowledge_base_ids: list[uuid.UUID] = Field(min_length=1)
+    title: str | None = Field(default=None, max_length=255)
     system_prompt: str | None = None
-    retrieval_mode: str = "precise"
-    top_k: int = 5
-    similarity_threshold: float = 0.70
+    retrieval_mode: Literal["precise", "broad"] = "precise"
+    top_k: int = Field(default=5, ge=1, le=20)
+    similarity_threshold: float = Field(default=0.70, ge=0, le=1)
 
 
 class SessionPatch(BaseModel):
-    title: str | None = None
+    title: str | None = Field(default=None, max_length=255)
     system_prompt: str | None = None
-    retrieval_mode: str | None = None
-    top_k: int | None = None
-    similarity_threshold: float | None = None
+    knowledge_base_ids: list[uuid.UUID] | None = Field(default=None, min_length=1)
+    retrieval_mode: Literal["precise", "broad"] | None = None
+    top_k: int | None = Field(default=None, ge=1, le=20)
+    similarity_threshold: float | None = Field(default=None, ge=0, le=1)
 
 
 class SessionOut(BaseModel):
@@ -46,4 +48,4 @@ class MessageOut(BaseModel):
 
 
 class SendMessageRequest(BaseModel):
-    content: str
+    content: str = Field(min_length=1)

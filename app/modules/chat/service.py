@@ -8,6 +8,7 @@ from sqlalchemy import select
 from fastapi import HTTPException
 
 from app.models.chat import ChatSession, ChatMessage
+from app.models.knowledge_base import KnowledgeBase
 from app.models.user import User
 from app.modules.retrieval.service import retrieve
 from app.modules.retrieval.prompt_builder import build_messages, build_retrieval_query
@@ -20,13 +21,35 @@ NO_CONTEXT_MSG = "在当前知识库中未找到相关内容，建议您补充�
 
 
 async def create_session(
-    data: dict, user_id: uuid.UUID, db: AsyncSession
+    data: dict, user: User, db: AsyncSession
 ) -> ChatSession:
-    session = ChatSession(**data, user_id=user_id)
+    await validate_kb_access(data["knowledge_base_ids"], user, db)
+    session = ChatSession(**data, user_id=user.id)
     db.add(session)
     await db.commit()
     await db.refresh(session)
     return session
+
+
+async def validate_kb_access(
+    kb_ids: list[uuid.UUID], user: User, db: AsyncSession
+) -> None:
+    if not kb_ids:
+        raise HTTPException(status_code=422, detail="At least one knowledge base is required")
+
+    unique_ids = set(kb_ids)
+    result = await db.execute(
+        select(KnowledgeBase).where(
+            KnowledgeBase.id.in_(unique_ids),
+            KnowledgeBase.is_active == True,
+        )
+    )
+    kbs = result.scalars().all()
+    if len(kbs) != len(unique_ids):
+        raise HTTPException(status_code=404, detail="Knowledge base not found")
+
+    if user.role != "admin" and any(kb.owner_id != user.id for kb in kbs):
+        raise HTTPException(status_code=403, detail="Forbidden knowledge base")
 
 
 async def list_sessions(user: User, db: AsyncSession) -> list[ChatSession]:
@@ -51,6 +74,18 @@ async def get_session_or_404(
         raise HTTPException(status_code=404, detail="Session not found")
     if user.role != "admin" and session.user_id != user.id:
         raise HTTPException(status_code=403, detail="Forbidden")
+    return session
+
+
+async def update_session(
+    session: ChatSession, data: dict, user: User, db: AsyncSession
+) -> ChatSession:
+    if "knowledge_base_ids" in data:
+        await validate_kb_access(data["knowledge_base_ids"], user, db)
+    for k, v in data.items():
+        setattr(session, k, v)
+    await db.commit()
+    await db.refresh(session)
     return session
 
 

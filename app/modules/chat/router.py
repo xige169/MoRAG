@@ -21,7 +21,7 @@ async def create_session(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    return await service.create_session(body.model_dump(), current_user.id, db)
+    return await service.create_session(body.model_dump(), current_user, db)
 
 
 @router.get("/sessions", response_model=list[SessionOut])
@@ -49,11 +49,9 @@ async def patch_session(
     db: AsyncSession = Depends(get_db),
 ):
     session = await service.get_session_or_404(session_id, current_user, db)
-    for k, v in body.model_dump(exclude_none=True).items():
-        setattr(session, k, v)
-    await db.commit()
-    await db.refresh(session)
-    return session
+    return await service.update_session(
+        session, body.model_dump(exclude_none=True), current_user, db
+    )
 
 
 @router.delete("/sessions/{session_id}", status_code=204)

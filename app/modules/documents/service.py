@@ -91,13 +91,6 @@ async def patch_document(
 ) -> Document:
     for k, v in data.items():
         setattr(doc, k, v)
-    # Sync is_enabled flag to Milvus
-    if "is_enabled" in data:
-        try:
-            col = get_collection(str(doc.knowledge_base_id))
-            col.delete(expr=f'document_id == "{str(doc.id)}"')
-        except Exception:
-            pass  # Non-critical; vectors will be re-filtered at query time via expr
     await db.commit()
     await db.refresh(doc)
     return doc
@@ -108,8 +101,8 @@ async def delete_document(doc: Document, db: AsyncSession) -> None:
     try:
         col = get_collection(str(doc.knowledge_base_id))
         col.delete(expr=f'document_id == "{str(doc.id)}"')
-    except Exception:
-        pass
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Failed to delete vectors: {exc}")
     # Remove file from disk
     if os.path.exists(doc.stored_path):
         os.unlink(doc.stored_path)

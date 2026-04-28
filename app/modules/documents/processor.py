@@ -11,6 +11,7 @@ from dashscope import TextEmbedding
 from app.models.document import Document, DocumentChunk
 from app.core.milvus_client import get_collection
 from app.core.config import get_settings
+from app.core.database import AsyncSessionLocal
 
 settings = get_settings()
 dashscope.api_key = settings.dashscope_api_key
@@ -43,15 +44,31 @@ def _chunk_embedding_batches(chunks: list[dict]) -> list[list[dict]]:
     ]
 
 
-async def process_document(doc_id: uuid.UUID, db: AsyncSession) -> None:
+async def _delete_vectors(kb_id: uuid.UUID, doc_id: uuid.UUID) -> None:
+    collection = get_collection(str(kb_id))
+    collection.delete(expr=f'document_id == "{str(doc_id)}"')
+    collection.flush()
+
+
+async def process_document(doc_id: uuid.UUID) -> None:
+    async with AsyncSessionLocal() as db:
+        await _process_document(doc_id, db)
+
+
+async def _process_document(doc_id: uuid.UUID, db: AsyncSession) -> None:
     await db.execute(
-        update(Document).where(Document.id == doc_id).values(status="processing")
+        update(Document)
+        .where(Document.id == doc_id)
+        .values(status="processing", error_message=None)
     )
     await db.commit()
+    inserted_doc = None
+    inserted_vector_ids: list[str] = []
 
     try:
         result = await db.execute(select(Document).where(Document.id == doc_id))
         doc = result.scalar_one()
+        inserted_doc = doc
 
         loop = asyncio.get_event_loop()
         raw_blocks = await loop.run_in_executor(
@@ -83,6 +100,18 @@ async def process_document(doc_id: uuid.UUID, db: AsyncSession) -> None:
 
         # Build Milvus & PG data
         collection = get_collection(str(doc.knowledge_base_id))
+        try:
+            await _delete_vectors(doc.knowledge_base_id, doc.id)
+        except Exception:
+            # Reprocessing should not fail just because the previous vector set is absent.
+            pass
+        await db.execute(
+            update(Document).where(Document.id == doc_id).values(chunk_count=0)
+        )
+        await db.execute(
+            DocumentChunk.__table__.delete().where(DocumentChunk.document_id == doc_id)
+        )
+
         milvus_rows = {
             "id": [],
             "chunk_pg_id": [],
@@ -98,6 +127,7 @@ async def process_document(doc_id: uuid.UUID, db: AsyncSession) -> None:
             milvus_id = chunk_pg_id.hex  # 32-char hex string as Milvus ID
 
             milvus_rows["id"].append(milvus_id)
+            inserted_vector_ids.append(milvus_id)
             milvus_rows["chunk_pg_id"].append(str(chunk_pg_id))
             milvus_rows["document_id"].append(str(doc.id))
             milvus_rows["content"].append(chunk["content"][:4000])
@@ -136,6 +166,15 @@ async def process_document(doc_id: uuid.UUID, db: AsyncSession) -> None:
         await db.commit()
 
     except Exception:
+        await db.rollback()
+        if inserted_doc and inserted_vector_ids:
+            try:
+                expr = "id in [" + ",".join(f'"{vid}"' for vid in inserted_vector_ids) + "]"
+                collection = get_collection(str(inserted_doc.knowledge_base_id))
+                collection.delete(expr=expr)
+                collection.flush()
+            except Exception:
+                pass
         error_msg = traceback.format_exc()[:2000]
         await db.execute(
             update(Document)
