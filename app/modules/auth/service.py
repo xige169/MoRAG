@@ -67,8 +67,10 @@ async def require_admin(
 
 
 async def create_initial_admin(db: AsyncSession) -> None:
-    result = await db.execute(select(User).where(User.role == "admin"))
-    if result.scalar_one_or_none():
+    result = await db.execute(
+        select(User).where(User.role == "admin").limit(1)
+    )
+    if result.scalars().first():
         return
     admin = User(
         username="admin",

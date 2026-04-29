@@ -48,6 +48,27 @@ def build_messages(
     return messages
 
 
+FALLBACK_SYSTEM = (
+    "当前知识库中没有与用户问题直接相关的内容，"
+    "请基于你的通用知识正常、简洁地回答用户的问题。"
+    "如果问题涉及用户专属的内部资料且你无法确定，请如实告知，"
+    "并建议用户将相关资料补充到知识库。"
+)
+
+
+def build_fallback_messages(
+    query: str,
+    history: list[dict],
+    system_prompt: str | None,
+) -> list[dict]:
+    role = system_prompt or DEFAULT_ROLE
+    messages = [{"role": "system", "content": f"你是{role}。{FALLBACK_SYSTEM}"}]
+    for msg in history[-6:]:
+        messages.append({"role": msg["role"], "content": msg["content"]})
+    messages.append({"role": "user", "content": query})
+    return messages
+
+
 def build_retrieval_query(current_query: str, history: list[dict]) -> str:
     """Prepend previous user turn for pronoun/reference resolution."""
     if not history or len(current_query) >= 30:

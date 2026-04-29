@@ -11,13 +11,15 @@ from app.models.chat import ChatSession, ChatMessage
 from app.models.knowledge_base import KnowledgeBase
 from app.models.user import User
 from app.modules.retrieval.service import retrieve
-from app.modules.retrieval.prompt_builder import build_messages, build_retrieval_query
+from app.modules.retrieval.prompt_builder import (
+    build_messages,
+    build_fallback_messages,
+    build_retrieval_query,
+)
 from app.core.config import get_settings
 
 settings = get_settings()
 dashscope.api_key = settings.dashscope_api_key
-
-NO_CONTEXT_MSG = "在当前知识库中未找到相关内容，建议您补充相关资料。"
 
 
 async def create_session(
@@ -126,22 +128,12 @@ async def stream_response(
         db=db,
     )
 
-    if not chunks:
-        assistant_msg = ChatMessage(
-            session_id=session.id,
-            role="assistant",
-            content=NO_CONTEXT_MSG,
-            sources=[],
-            retrieval_ms=retrieval_ms,
-        )
-        db.add(assistant_msg)
-        await db.commit()
-        await db.refresh(assistant_msg)
-        yield f"data: {json.dumps({'type': 'no_context', 'message': NO_CONTEXT_MSG}, ensure_ascii=False)}\n\n"
-        yield f"data: {json.dumps({'type': 'done', 'message_id': str(assistant_msg.id)})}\n\n"
-        return
-
-    messages = build_messages(query, chunks, history, session.system_prompt)
+    is_fallback = not chunks
+    if is_fallback:
+        messages = build_fallback_messages(query, history, session.system_prompt)
+        yield f"data: {json.dumps({'type': 'fallback'}, ensure_ascii=False)}\n\n"
+    else:
+        messages = build_messages(query, chunks, history, session.system_prompt)
 
     full_content = ""
     input_tokens = 0
@@ -168,19 +160,22 @@ async def stream_response(
             yield f"data: {json.dumps({'type': 'error', 'code': 'LLM_ERROR', 'message': str(resp.message)})}\n\n"
             return
 
-    # Strip raw content field from sources before saving
-    sources = [
-        {k: v for k, v in c.items() if k not in ("content", "score")}
-        for c in chunks
-    ]
-
-    yield f"data: {json.dumps({'type': 'sources', 'sources': sources}, ensure_ascii=False, default=str)}\n\n"
+    if is_fallback:
+        sources = []
+    else:
+        # Strip raw content field from sources before saving
+        sources = [
+            {k: v for k, v in c.items() if k not in ("content", "score")}
+            for c in chunks
+        ]
+        yield f"data: {json.dumps({'type': 'sources', 'sources': sources}, ensure_ascii=False, default=str)}\n\n"
 
     assistant_msg = ChatMessage(
         session_id=session.id,
         role="assistant",
         content=full_content,
         sources=sources,
+        is_fallback=is_fallback,
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         retrieval_ms=retrieval_ms,

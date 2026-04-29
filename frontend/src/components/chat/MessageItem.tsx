@@ -1,6 +1,6 @@
 import * as React from 'react'
 import ReactMarkdown from 'react-markdown'
-import { ThumbsUp, ThumbsDown, FileText } from 'lucide-react'
+import { ThumbsUp, ThumbsDown, FileText, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 import type { ChatMessage, Source } from '@/types'
@@ -55,6 +55,14 @@ export function MessageItem({ message, isStreaming }: MessageItemProps) {
             </div>
           )}
         </div>
+
+        {/* Fallback badge */}
+        {!isUser && message.is_fallback && (
+          <div className="inline-flex items-center gap-1 rounded-full border border-border bg-secondary px-2.5 py-1 text-xs text-muted-foreground">
+            <Sparkles className="h-3 w-3" />
+            <span>通用回答（未基于知识库）</span>
+          </div>
+        )}
 
         {/* Sources */}
         {!isUser && message.sources.length > 0 && (

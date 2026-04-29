@@ -108,6 +108,7 @@ async def get_audit_logs(
             "question": user_msg.content if user_msg else "",
             "answer": msg.content,
             "sources": msg.sources or [],
+            "is_fallback": msg.is_fallback,
             "retrieval_mode": session.retrieval_mode,
             "retrieval_ms": msg.retrieval_ms,
             "feedback_rating": fb.rating if fb else None,

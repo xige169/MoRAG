@@ -152,10 +152,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
                   ),
                 }))
               }
-            } else if (evt.type === 'no_context' && evt.message) {
+            } else if (evt.type === 'fallback') {
               set((state) => ({
                 messages: state.messages.map((m) =>
-                  m.id === asstId ? { ...m, content: evt.message! } : m,
+                  m.id === asstId ? { ...m, is_fallback: true } : m,
                 ),
               }))
             } else if (evt.type === 'error') {

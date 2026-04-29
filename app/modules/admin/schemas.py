@@ -36,6 +36,7 @@ class AuditLogItem(BaseModel):
     question: str
     answer: str
     sources: list
+    is_fallback: bool = False
     retrieval_mode: str
     retrieval_ms: int | None
     feedback_rating: str | None

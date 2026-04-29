@@ -80,11 +80,12 @@ export interface ChatMessage {
   role: 'user' | 'assistant'
   content: string
   sources: Source[]
+  is_fallback?: boolean
   created_at: string
 }
 
 export interface SSEEvent {
-  type: 'content' | 'sources' | 'done' | 'no_context' | 'error'
+  type: 'content' | 'sources' | 'done' | 'fallback' | 'error'
   delta?: string
   sources?: Source[]
   message?: string
@@ -110,6 +111,7 @@ export interface AuditLogItem {
   question: string
   answer: string
   sources: Source[]
+  is_fallback?: boolean
   retrieval_mode: string
   retrieval_ms?: number
   feedback_rating?: string
