@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
+import { MarkdownMessage } from '@/components/markdown/MarkdownMessage'
 import { listAuditLogs } from '@/services/admin'
 import type { AuditLogItem } from '@/types'
 import { formatDate, truncate } from '@/lib/utils'
@@ -141,7 +142,7 @@ export function AuditPage() {
               </div>
               <div>
                 <p className="text-xs font-semibold text-muted-foreground uppercase mb-1">回答</p>
-                <p className="text-sm whitespace-pre-wrap">{detail?.answer}</p>
+                <MarkdownMessage content={detail?.answer ?? ''} />
               </div>
               {detail?.feedback_comment && (
                 <div>

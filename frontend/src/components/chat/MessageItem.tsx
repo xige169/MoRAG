@@ -1,8 +1,8 @@
 import * as React from 'react'
-import ReactMarkdown from 'react-markdown'
 import { ThumbsUp, ThumbsDown, FileText, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+import { MarkdownMessage } from '@/components/markdown/MarkdownMessage'
 import type { ChatMessage, Source } from '@/types'
 import { useChatStore } from '@/stores/chatStore'
 
@@ -47,8 +47,8 @@ export function MessageItem({ message, isStreaming }: MessageItemProps) {
           {isUser ? (
             <p className="whitespace-pre-wrap">{message.content}</p>
           ) : (
-            <div className="prose prose-sm prose-invert max-w-none">
-              <ReactMarkdown>{message.content}</ReactMarkdown>
+            <div className="max-w-none">
+              <MarkdownMessage content={message.content} />
               {isStreaming && (
                 <span className="inline-block h-4 w-0.5 bg-primary ml-0.5 animate-[blink_1s_step-end_infinite]" />
               )}
