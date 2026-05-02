@@ -234,10 +234,10 @@ pip install -r requirements.txt
 
 ```bash
 # 启动 PostgreSQL + Milvus（etcd + MinIO）
-docker-compose up -d postgres etcd minio milvus-standalone
+docker compose up -d postgres etcd minio milvus
 
 # 等待 Milvus 就绪（约 30-60 秒）
-docker-compose logs -f milvus-standalone
+docker compose logs -f milvus
 ```
 
 ### 数据库迁移
